@@ -1,0 +1,40 @@
+---
+title: "Reddit Basketball Lookup"
+author: "Kevin A. Ryan (JHUAPL)"
+date: "Monday, October 12, 2015"
+output: html_document
+---
+```{r}
+library(RSQLite)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+db <- src_sqlite('../input/database.sqlite', create = F)
+
+db_subset <- db %>%
+  tbl('May2015') %>%
+  filter(subreddit == "nba")
+df <- collect(db_subset)
+
+# Count number of comments grouped by redditor's flair ####
+flair_class <- select(df, author_flair_css_class) %>%
+  # Clean up the flair class
+  mutate(flair = str_replace(author_flair_css_class, "\\d$", "")) %>%
+  group_by(flair) %>%
+  summarize(N = length(flair)) %>%
+  top_n(20, N) %>%
+  filter(!is.na(flair)) %>%
+  arrange(N) 
+
+flair_class$flair <- with(flair_class,
+                          factor(flair, levels = flair, ordered = TRUE))
+
+ggplot(flair_class, aes(x = flair, y = N)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  ylab("Number of comments") +
+  ggtitle("Top 20 flairs according to r/nba comments") +
+  theme_bw()
+```
+

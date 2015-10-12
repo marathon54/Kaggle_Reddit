@@ -1,0 +1,54 @@
+---
+title: "Kaggle/Reddit Analysis"
+author: "Kevin A. Ryan (JHUAPL)"
+date: "Monday, October 12, 2015"
+output: html_document
+---
+```{r}
+require(RSQLite)
+require(dplyr)
+library(reshape2)
+db <- src_sqlite('/full/path/to/database.sqlite', create=F)
+
+db <- src_sqlite('../input/database.sqlite', create = F)
+
+db_subset <- db %>%
+            tbl('May2015')
+df <- data.frame(db_subset)
+
+# print("names of df vectors:")
+# names(df)
+
+# print("number of subreddits:")
+# length(unique(df$subreddit)) # 5299
+
+df$posix <- as.POSIXct(df$created_utc, origin="1970-01-01")
+df$date <- as.Date(df$posix)
+
+df.sub <- data.frame(subreddit = sort(unique(df$subreddit)))
+df.sub$posts <- tapply(df$ups, df$subreddit, length)
+df.sub$ups <- tapply(df$ups, df$subreddit, sum)
+df.sub$avg.ups <- df.sub$ups / df.sub$posts
+
+print("top subreddits by post volume")
+head(df.sub[order(df.sub$posts, df.sub$ups, decreasing = T),])
+
+print("top subreddits by ups volume")
+head(df.sub[order(df.sub$ups, df.sub$posts, decreasing = T),])
+
+print("top subreddits by avg ups per post")
+head(df.sub[order(df.sub$avg.ups, df.sub$posts, decreasing = T),])
+
+aggdf <- df %>%
+        group_by(date, subreddit) %>%
+        summarise(
+            t.posts = length(ups),
+            t.ups = sum(ups),
+            avg.ups = sum(ups)/length(ups)
+            )
+
+print("subreddit performance metrics by date")
+head(aggdf)
+
+```
+

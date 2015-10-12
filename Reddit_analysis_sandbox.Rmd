@@ -1,0 +1,201 @@
+---
+title: "BigQuery"
+author: "Kevin A. Ryan (JHUAPL)"
+date: "Monday, October 12, 2015"
+output: html_document
+---
+
+Setup...
+```{r}
+options(warn=-1)
+
+# IMPORTANT: This assumes that all packages in "Rstart.R" are installed,
+# and the fonts "Source Sans Pro" and "Open Sans Condensed Bold" are installed
+# via extrafont. If ggplot2 charts fail to render, you may need to change/remove the theme call.
+
+source("Rstart.R")
+library(tidyr)
+library(bigrquery)
+library(methods) # needed for query_exec in Jupyter: https://github.com/hadley/bigrquery/issues/32
+library(wordcloud)
+library(digest)
+
+options(repr.plot.mimetypes = 'image/png', repr.plot.width=4, repr.plot.height=3, repr.plot.res=300)
+
+project_name <- "reddit-1096"   
+
+```
+
+Query via Google Big Query Interface...
+```{r}
+#Work the whole dataset
+sql <- "SELECT DATE(SEC_TO_TIMESTAMP(created)) date_submission,
+COUNT(*) as num_submissions
+FROM [fh-bigquery:reddit_posts.full_corpus_201509]
+GROUP BY date_submission
+ORDER by date_submission"
+
+df <- tbl_df(query_exec(sql, project=project_name, max_pages=Inf))
+df %>% tail(10)
+```
+
+Timeseries plot of dates...
+```{r}
+plot <- ggplot(df, aes(x=as.Date(date_submission), y=num_submissions)) +
+            geom_area(fill="#2980b9", alpha=0.85, size=10) +
+            fte_theme() +
+            scale_x_date(breaks=date_breaks("1 year"), labels=date_format("%Y")) +
+            scale_y_continuous(breaks=pretty_breaks(8), labels=comma) +
+            labs(x="Date of Submission", y="# of Submissions", title="Daily # of Reddit Submissions from 2006 - 2015")
+plot
+```
+
+Heatmap....
+```{r}
+sql <- "SELECT
+  DAYOFWEEK(SEC_TO_TIMESTAMP(created - 60*60*5)) as sub_dayofweek,
+  HOUR(SEC_TO_TIMESTAMP(created - 60*60*5)) as sub_hour,
+  SUM(IF(score >= 3000, 1, 0)) as num_gte_3000,
+FROM [fh-bigquery:reddit_posts.full_corpus_201509]
+GROUP BY sub_dayofweek, sub_hour
+ORDER BY sub_dayofweek, sub_hour"
+
+df <- tbl_df(query_exec(sql, project=project_name, max_pages=Inf))
+df %>% tail(10)
+
+#clean format 1
+dow_format <- data_frame(sub_dayofweek = 1:7, dow_format = c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))
+
+hour_format <- data_frame(sub_hour = 0:23, hour_format = c(paste(c(12,1:11),"AM"), paste(c(12,1:11),"PM")))
+
+df_time <- df %>% left_join(dow_format) %>% left_join(hour_format)
+
+df_time %>% tail(10)
+
+# Necessary for correct order when plotting.
+df_time$dow_format <- factor(df_time$dow_format, level = rev(dow_format$dow_format))
+df_time$hour_format <- factor(df_time$hour_format, level = hour_format$hour_format)
+
+plot <- ggplot(df_time, aes(x=hour_format, y=dow_format, fill=num_gte_3000)) +
+    geom_tile() +
+    fte_theme() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.6), legend.title = element_blank(), legend.position="top", legend.direction="horizontal", legend.key.width=unit(1, "cm"), legend.key.height=unit(0.25, "cm"), legend.margin=unit(-0.5,"cm"), panel.margin=element_blank()) +
+    labs(x = "Hour of Reddit Submission (Eastern Standard Time)", y = "Day of Week of Reddit Submission", title = "# of Reddit Submissions Which Received >3000 Points, by Time of Original Submission") +
+    scale_fill_gradient(low = "white", high = "#27ae60", labels=comma, breaks=pretty_breaks(6))
+plot
+
+max_save(plot, "reddit-bigquery-2", "Reddit", w=6)
+
+```
+
+Which words in comments lead to the most upvotes?
+
+```{r}
+# In R, note that the backslashes and quotes are escaped.
+
+sql <- "SELECT word, COUNT(*) as num_words, AVG(score) as avg_score
+FROM(FLATTEN((
+  SELECT SPLIT(LOWER(REGEXP_REPLACE(body, r'[\\.\\\",*:()\\[\\]/|\\n]', ' ')), ' ') word, score
+  FROM [fh-bigquery:reddit_comments.2015_08] 
+  WHERE author NOT IN (SELECT author FROM [fh-bigquery:reddit_comments.bots_201505])
+    AND subreddit=\"news\"
+  ), word))
+GROUP EACH BY word
+HAVING num_words >= 10000
+ORDER BY num_words DESC"
+
+df <- tbl_df(query_exec(sql, project=project_name, max_pages=Inf))
+df %>% head(10)
+
+```
+
+find the most subreddits...   
+```{r}
+sql <- "SELECT subreddit, date, unique_authors FROM
+(SELECT subreddit, date, unique_authors, ROW_NUMBER() OVER (PARTITION BY date ORDER BY unique_authors DESC) rank FROM
+(SELECT subreddit, LEFT(DATE(SEC_TO_TIMESTAMP(created_utc)), 7) as date, COUNT(UNIQUE(author)) as unique_authors
+FROM TABLE_QUERY([fh-bigquery:reddit_comments], \"table_id CONTAINS \'20\' AND LENGTH(table_id)<8\")
+GROUP EACH BY subreddit, date
+))
+WHERE rank <= 20
+ORDER BY date ASC, unique_authors DESC"
+
+df <- tbl_df(query_exec(sql, project=project_name, max_pages=Inf))
+df %>% tail(10)
+
+df_subreddit <- df %>% mutate(date_format=paste(date,"-01",sep=''))
+
+system("mkdir -p subreddit-ranks")
+
+# Assign colors to subreddits at random using a hash of subreddit name
+
+colorHash <- function(strings) {
+    colors <- color_palette
+    
+    if (strtoi(substr(digest(strings),1,6), base=36) %% length(colors) == 0) { return ("#999999") }
+    return (colors[strtoi(substr(digest(strings),1,6), base=36) %% length(colors)])
+}
+
+subredditPlot <- function(month) {
+    df_subset <- df_subreddit %>% filter(date_format==month)
+    
+    subreddit_colors <- unlist(lapply(df_subset$subreddit, colorHash))
+
+    df_subset$subreddit <- factor(df_subset$subreddit, levels=rev(df_subset$subreddit))
+        
+    left_labels <- ifelse(df_subset$unique_authors > max(df_subset$unique_authors) * 0.90,
+                             format(df_subset$unique_authors, big.mark=","), '')
+    right_labels <- ifelse(df_subset$unique_authors < max(df_subset$unique_authors) * 0.90,
+                             format(df_subset$unique_authors, big.mark=","), '')
+    
+    plot <- ggplot(df_subset, aes(x=subreddit, y=unique_authors, fill=subreddit)) +
+                geom_bar(stat="identity") +
+                geom_text(label=left_labels, size=2, hjust=1.25, color="white", family="Open Sans Condensed Bold") +
+                geom_text(label=right_labels, size=2, hjust=-0.25, color=subreddit_colors, family="Open Sans Condensed Bold") +
+                fte_theme() +
+                coord_flip() +
+                scale_y_continuous(labels=comma, breaks=pretty_breaks(6)) +
+                scale_fill_manual(values=rev(subreddit_colors)) +
+                theme(axis.text.y = element_text(color=rev(subreddit_colors)), plot.title=element_text(hjust=1), axis.title.y=element_blank()) +
+                labs(y="Monthly Unique Commenters in Subreddit", title=sprintf("Subreddits with Greatest # of Distinct Comment Authors in %s", format(as.Date(month), "%B %Y")))
+    
+                         
+    max_save(plot, sprintf("subreddit-ranks/%s", month), "Reddit")
+    
+}
+
+subredditPlot("2015-08-01")
+
+```
+
+
+
+
+Build a wordcloud
+```{r}
+stop_words <- unlist(strsplit("a,able,about,across,after,all,almost,also,am,among,an,and,any,are,as,at,be,because,been,but,by,can,cannot,could,dear,did,do,does,either,else,ever,every,for,from,get,got,had,has,have,he,her,hers,him,his,how,however,i,if,in,into,is,it,its,just,least,let,like,likely,may,me,might,most,must,my,neither,no,nor,not,of,off,often,on,only,or,other,our,own,rather,said,say,says,she,should,since,so,some,than,that,the,their,them,then,there,these,they,this,tis,to,too,twas,us,wants,was,we,were,what,when,where,which,while,who,whom,why,will,with,would,yet,you,your,id,item,it\'s,don\'t",","))
+
+pal <- brewer.pal(9, "Purples")
+pal <- pal[-c(1:3)]   # Remove light colors
+
+df_nostop <- df %>% filter(!(word %in% stop_words))
+
+png(filename = "reddit-bigquery-3.png", width = 1000, height = 1000, res= 300)
+
+wordcloud(toupper(df_nostop$word),
+          df_nostop$num_words,
+          scale=c(5,.1),
+          random.order=F,
+          rot.per=.10,
+          max.words=5000,
+          colors=pal,
+          family="Avenir Next Condensed Bold",
+          random.color=T)
+
+dev.off()
+```
+
+```{r}
+
+```
+

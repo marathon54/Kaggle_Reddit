@@ -1,0 +1,9 @@
+{
+    "path" : "~/_data/Kaggle_Reddit",
+    "sortOrder" : [
+        {
+            "ascending" : true,
+            "columnIndex" : 2
+        }
+    ]
+}
