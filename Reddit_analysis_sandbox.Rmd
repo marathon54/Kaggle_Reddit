@@ -14,6 +14,7 @@ options(warn=-1)
 # via extrafont. If ggplot2 charts fail to render, you may need to change/remove the theme call.
 
 source("Rstart.R")
+
 library(tidyr)
 library(bigrquery)
 library(methods) # needed for query_exec in Jupyter: https://github.com/hadley/bigrquery/issues/32
