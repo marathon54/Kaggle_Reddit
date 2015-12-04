@@ -1,0 +1,22 @@
+{
+    "contents" : "",
+    "created" : 1444937649437.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "F3BB391C",
+    "lastKnownWriteTime" : 7741240722073845761,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "caption" : "NCI60",
+        "contentUrl" : "content?title=NCI60&file=af6828f242444beda18ecd7563793e10.htm",
+        "displayedObservations" : 64,
+        "displayedVariables" : 100,
+        "totalObservations" : 64,
+        "variables" : 6831
+    },
+    "source_on_save" : false,
+    "type" : "r_dataframe"
+}

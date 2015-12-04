@@ -1,0 +1,22 @@
+{
+    "contents" : "",
+    "created" : 1444937130838.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "F18676BF",
+    "lastKnownWriteTime" : 7741240722073845761,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "caption" : "Wage",
+        "contentUrl" : "content?title=Wage&file=a95a608bdc1b49c488dc741d1e388d02.htm",
+        "displayedObservations" : 1000,
+        "displayedVariables" : 13,
+        "totalObservations" : 3000,
+        "variables" : 12
+    },
+    "source_on_save" : false,
+    "type" : "r_dataframe"
+}

@@ -1,0 +1,17 @@
+{
+    "contents" : "library(ISLR)\nData(Wage)\n",
+    "created" : 1444936968583.000,
+    "dirty" : true,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "577452184",
+    "id" : "C9C4E524",
+    "lastKnownWriteTime" : 1444837802,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "tempName" : "Untitled1"
+    },
+    "source_on_save" : false,
+    "type" : "r_source"
+}
